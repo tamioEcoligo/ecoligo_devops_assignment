@@ -1,123 +1,119 @@
 # Production deployment pipeline for ecoligo application
-# Deploys to EKS on main branch pushes
+# Deploys to EKS when we push to main branch
 
 name: Production Deployment
 
 on:
   push:
     branches: [main]
-  # Also deploy when we create releases
-  release:
-    types: [published]
 
-# Environment variables we'll use throughout
+# Using your actual AWS regions and repository names
 env:
-  AWS_REGION: us-east-1
-  CLUSTER_NAME: ecoligo-prod
+  EKS_REGION: us-east-1
+  ECR_REGION: ap-south-1
+  ECR_REGISTRY: 398803372580.dkr.ecr.ap-south-1.amazonaws.com
+  ECR_REPOSITORY: ecoligovenkat
+  EKS_CLUSTER: corporate-secondary
+  NAMESPACE: ecoligo-production
   APP_NAME: ecoligo-app
-  NAMESPACE: ecoligo
 
 jobs:
-  # First job: Build the container and push to ECR
+  # Build and push the container image to ECR
   build-and-push:
-    name: Build and Push Container
+    name: Build Container and Push to ECR
     runs-on: self-hosted
     
     outputs:
       image_tag: ${{ steps.tag.outputs.short_sha }}
-      image_url: ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}
     
     steps:
     - name: Check out code
       uses: actions/checkout@v4
       
-    - name: Configure AWS credentials
+    - name: Configure AWS credentials for ECR
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: ${{ env.ECR_REGION }}
         
-    - name: Login to Amazon ECR
-      id: ecr
-      uses: aws-actions/amazon-ecr-login@v2
-      
+    - name: Login to ECR
+      run: |
+        aws ecr get-login-password --region ${{ env.ECR_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+        
     - name: Generate image tag
       id: tag
       run: |
-        # Use short SHA for readability, fallback to full SHA
-        SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-8)
+        # Use short git SHA for the tag
+        SHORT_SHA=$(git rev-parse --short HEAD)
         echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
         echo "Using image tag: $SHORT_SHA"
         
     - name: Build Docker image
       run: |
-        docker build -t ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:${{ steps.tag.outputs.short_sha }} .
+        docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.short_sha }} .
         
     - name: Push image to ECR
       run: |
-        docker push ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:${{ steps.tag.outputs.short_sha }}
+        docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.short_sha }}
         
-    - name: Tag as latest and push
+    - name: Also tag as latest and push
       run: |
-        docker tag ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:${{ steps.tag.outputs.short_sha }} ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:latest
-        docker push ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:latest
+        docker tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.short_sha }} ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+        docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
 
-  # Second job: Deploy to Kubernetes
+  # Deploy to Kubernetes cluster
   deploy-to-kubernetes:
-    name: Deploy to EKS
+    name: Deploy to EKS Cluster
     runs-on: self-hosted
     needs: build-and-push
-    
-    # This is a production deployment, so we use the production environment
-    environment: production
     
     steps:
     - name: Check out code
       uses: actions/checkout@v4
       
-    - name: Configure AWS credentials
+    - name: Configure AWS credentials for EKS
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: ${{ env.EKS_REGION }}
         
-    - name: Update kubeconfig for EKS cluster
+    - name: Update kubeconfig for EKS
       run: |
-        # Connect to our EKS cluster
         aws eks update-kubeconfig \
-          --region ${{ env.AWS_REGION }} \
-          --name ${{ env.CLUSTER_NAME }}
+          --region ${{ env.EKS_REGION }} \
+          --name ${{ env.EKS_CLUSTER }}
           
-    - name: Create namespace if needed
+    - name: Create namespace
       run: |
-        # Make sure our namespace exists
         kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
         
     - name: Deploy application
       run: |
-        # Apply our Kubernetes manifests
+        # Apply our Kubernetes deployment
         kubectl apply -f kubernetes/manifests/ -n ${{ env.NAMESPACE }}
         
-    - name: Wait for deployment to complete
+    - name: Wait for deployment to be ready
       run: |
-        # Wait for the deployment to roll out successfully
-        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
+        echo "Waiting for deployment to complete..."
+        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=180s
         
-    - name: Verify deployment
+    - name: Check deployment status
       run: |
-        echo "Deployment status:"
+        echo "=== Deployment Status ==="
         kubectl get deployments -n ${{ env.NAMESPACE }}
         echo ""
-        echo "Pods:"
-        kubectl get pods -n ${{ env.NAMESPACE }} -l app=${{ env.APP_NAME }}
+        echo "=== Pods ==="
+        kubectl get pods -n ${{ env.NAMESPACE }}
+        echo ""
+        echo "=== Services ==="
+        kubectl get services -n ${{ env.NAMESPACE }}
         
-    - name: Run basic smoke test
+    - name: Simple application test
       run: |
-        # Simple check that the application is responding
-        echo "Waiting for application to be ready..."
+        # Wait a bit for the LoadBalancer to provision
         sleep 30
-        # Get the service endpoint and test it
+        echo "Testing application..."
+        # Get the service endpoint
         kubectl get svc ${{ env.APP_NAME }} -n ${{ env.NAMESPACE }}
-        echo "Deployment completed successfully"
