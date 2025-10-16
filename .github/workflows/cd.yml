@@ -1,5 +1,5 @@
 # Production deployment pipeline for ecoligo application
-# Deploys to EKS when we push to main branch
+# Uses existing Kubernetes manifests with dynamic image tags
 
 name: Production Deployment
 
@@ -7,7 +7,6 @@ on:
   push:
     branches: [main]
 
-# Using your actual AWS regions and repository names
 env:
   EKS_REGION: us-east-1
   ECR_REGION: ap-south-1
@@ -18,9 +17,8 @@ env:
   APP_NAME: ecoligo-app
 
 jobs:
-  # Build and push the container image to ECR
   build-and-push:
-    name: Build Container and Push to ECR
+    name: Build and Push Container
     runs-on: self-hosted
     
     outputs:
@@ -44,10 +42,9 @@ jobs:
     - name: Generate image tag
       id: tag
       run: |
-        # Use short git SHA for the tag
         SHORT_SHA=$(git rev-parse --short HEAD)
         echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
-        echo "Using image tag: $SHORT_SHA"
+        echo "Using immutable image tag: $SHORT_SHA"
         
     - name: Build Docker image
       run: |
@@ -56,15 +53,10 @@ jobs:
     - name: Push image to ECR
       run: |
         docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.short_sha }}
-        
-    - name: Also tag as latest and push
-      run: |
-        docker tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.short_sha }} ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-        docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+        echo "Image successfully pushed with tag: ${{ steps.tag.outputs.short_sha }}"
 
-  # Deploy to Kubernetes cluster
   deploy-to-kubernetes:
-    name: Deploy to EKS Cluster
+    name: Deploy to EKS
     runs-on: self-hosted
     needs: build-and-push
     
@@ -85,35 +77,38 @@ jobs:
           --region ${{ env.EKS_REGION }} \
           --name ${{ env.EKS_CLUSTER }}
           
-    - name: Create namespace
+    - name: Create namespace if needed
       run: |
         kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
         
+    - name: Update deployment with current image tag
+      run: |
+        # Use sed to replace the image tag in the deployment file
+        sed -i.bak "s|image:.*|image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ needs.build-and-push.outputs.image_tag }}|" kubernetes/manifests/deployment.yaml
+        
     - name: Deploy application
       run: |
-        # Apply our Kubernetes deployment
+        # Apply all manifests from the manifests directory
         kubectl apply -f kubernetes/manifests/ -n ${{ env.NAMESPACE }}
         
-    - name: Wait for deployment to be ready
+    - name: Wait for deployment rollout
       run: |
         echo "Waiting for deployment to complete..."
-        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=180s
+        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
         
-    - name: Check deployment status
+    - name: Verify deployment status
       run: |
-        echo "=== Deployment Status ==="
-        kubectl get deployments -n ${{ env.NAMESPACE }}
+        echo "=== Deployment Details ==="
+        kubectl get deployment ${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} -o wide
         echo ""
         echo "=== Pods ==="
-        kubectl get pods -n ${{ env.NAMESPACE }}
+        kubectl get pods -n ${{ env.NAMESPACE }} -l app=${{ env.APP_NAME }}
         echo ""
         echo "=== Services ==="
-        kubectl get services -n ${{ env.NAMESPACE }}
+        kubectl get service ${{ env.APP_NAME }} -n ${{ env.NAMESPACE }}
         
-    - name: Simple application test
+    - name: Restore original deployment file
       run: |
-        # Wait a bit for the LoadBalancer to provision
-        sleep 30
-        echo "Testing application..."
-        # Get the service endpoint
-        kubectl get svc ${{ env.APP_NAME }} -n ${{ env.NAMESPACE }}
+        # Restore the backup to keep the repository clean
+        mv kubernetes/manifests/deployment.yaml.bak kubernetes/manifests/deployment.yaml
+        echo "Deployment file restored to original state"
