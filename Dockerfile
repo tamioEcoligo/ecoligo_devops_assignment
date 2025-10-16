@@ -1,4 +1,5 @@
 # pull official base image
+# hash
 FROM python:3.8.1-alpine
 
 # set work directory
