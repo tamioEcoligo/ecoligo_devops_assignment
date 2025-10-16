@@ -1,0 +1,35 @@
+# Basic deployment manifest for ecoligo application
+# This will be enhanced later with Helm and proper configuration
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecoligo-app
+  labels:
+    app: ecoligo-app
+    version: "1.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ecoligo-app
+  template:
+    metadata:
+      labels:
+        app: ecoligo-app
+    spec:
+      containers:
+      - name: ecoligo-app
+        image: placeholder/ecoligo-app:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
