@@ -7,7 +7,7 @@ on:
 jobs:
   test-and-build:
     name: Run Tests and Build Docker Image
-    runs-on: ubuntu-latest
+    runs-on: python3-runners
     
     steps:
     - name: Checkout code
