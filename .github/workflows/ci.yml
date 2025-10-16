@@ -1,0 +1,43 @@
+name: CI Pipeline - Test and Build
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  test-and-build:
+    name: Run Tests and Build Docker Image
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+        
+    - name: Install dependencies
+      run: |
+        pip install uv
+        uv pip install -r requirements.txt
+        
+    - name: Run basic tests
+      run: |
+        python -c "import app; print('Application imports successfully')"
+        python -c "from app.main import app; print('FastAPI app initialized')"
+        
+    - name: Build Docker image
+      run: |
+        docker build -t ecoligo-app .
+        
+    - name: Test Docker image
+      run: |
+        docker run --rm ecoligo-app python -c "import app; print('Docker image works')"
+        
+    - name: Verify application starts
+      run: |
+        timeout 30s docker run --rm ecoligo-app uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+        sleep 10
+        curl -f http://localhost:8000/ || exit 1
