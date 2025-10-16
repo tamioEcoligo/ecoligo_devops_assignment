@@ -1,0 +1,24 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: self-hosted
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Build Docker image
+      run: |
+        docker build -t ecoligo-app .
+        
+    - name: Test Docker image
+      run: |
+        docker run --rm ecoligo-app python -c "import app; print('Application imports work in Docker')"
+        echo "Docker image test passed"
