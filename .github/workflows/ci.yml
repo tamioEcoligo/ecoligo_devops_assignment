@@ -1,61 +1,75 @@
-name: CI Pipeline - Build and Test
+# CI pipeline for ecoligo FastAPI application
+# Runs on PRs and pushes to main/dev branches
+
+name: Application CI
 
 on:
   pull_request:
-    branches: [ main, dev ]
+    branches: [main, dev]
   push:
-    branches: [ main, dev ]
+    branches: [main, dev]
 
 jobs:
-  validate-and-test:
-    name: Validate Code and Run Tests
+  test-and-validate:
+    name: Test and Validate Build
     runs-on: self-hosted
     
     steps:
-    - name: Checkout code
+    # Get the code
+    - name: Check out repository
       uses: actions/checkout@v4
       
-    - name: Set up Python
+    # Set up Python environment  
+    - name: Setup Python 3.13
       uses: actions/setup-python@v4
       with:
         python-version: '3.13'
         
-    - name: Install Python dependencies
+    # Install dependencies - using pip since it's more reliable in CI
+    - name: Install Python packages
       run: |
-        # Use pip to install dependencies directly
         pip install -r requirements.txt
+        # Make sure we have pytest for running tests
+        pip install pytest pytest-cov
         
-    - name: Run unit tests
+    # Run the test suite that already exists in the project
+    - name: Run test suite
       run: |
-        # Use pytest directly
-        pytest tests/ -v --cov=app --cov-report=term-missing
+        # Using the existing Makefile target for tests
+        make unittest
+      
+    # Quick sanity check that the app loads properly
+    - name: Verify application loads
+      run: |
+        echo "Checking if application modules can be imported..."
+        python -c "from app.main import app; print('FastAPI app loads OK')"
+        python -c "from app.api import api; print('API module loads OK')"
+        echo "Application structure looks good"
         
-    - name: Validate application structure
+    # Build Docker image if Docker is available
+    - name: Build container image
       run: |
-        python -c "import app; print('✅ Application imports work')"
-        python -c "from app.main import app; print('✅ FastAPI app initializes')"
-        python -c "from app.api import api; print('✅ API module loads correctly')"
-        
-    - name: Build Docker image
-      run: |
-        # Use podman instead of docker if available, or use system docker
-        if command -v docker &> /dev/null; then
-          docker build -t ecoligo-app:$GITHUB_SHA .
-          docker build -t ecoligo-app:latest .
-        else
-          echo "Docker not available, skipping Docker build"
+        # Check if we have Docker available on this runner
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "Docker not found on this runner, skipping container build"
           exit 0
         fi
         
-    - name: Test Docker container functionality
-      run: |
-        if command -v docker &> /dev/null; then
-          docker run --rm ecoligo-app:$GITHUB_SHA python -c "import app; print('✅ Container imports work')"
-        else
-          echo "Docker not available, skipping container test"
-        fi
+        echo "Building Docker image..."
+        docker build -t ecoligo-app:${GITHUB_SHA:0:8} .
         
+        echo "Testing basic container functionality..."
+        docker run --rm ecoligo-app:${GITHUB_SHA:0:8} python -c "import app; print('App works in container')"
+        
+    # Test the cronjob script that processes questions
     - name: Test cronjob script
       run: |
-        # Test the cronjob script can run
-        cd scripts && python hourly_cronjob.py && echo "✅ Cronjob script executed successfully"
+        cd scripts
+        python hourly_cronjob.py
+        echo "Cronjob script executed successfully"
+        
+    # Final validation
+    - name: CI completion check
+      run: |
+        echo "CI pipeline completed successfully"
+        echo "Application is ready for deployment"
