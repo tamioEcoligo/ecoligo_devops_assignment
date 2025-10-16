@@ -1,6 +1,4 @@
-# Basic deployment manifest for ecoligo application
-# This will be enhanced later with Helm and proper configuration
-
+# Deployment for ecoligo FastAPI application
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,7 +18,7 @@ spec:
     spec:
       containers:
       - name: ecoligo-app
-        image: placeholder/ecoligo-app:latest
+        image: 398803372580.dkr.ecr.ap-south-1.amazonaws.com/ecoligovenkat:latest
         ports:
         - containerPort: 8000
         env:
@@ -33,3 +31,16 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+        # Basic health checks
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
