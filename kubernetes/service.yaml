@@ -1,0 +1,12 @@
+# Basic service definition
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecoligo-app
+spec:
+  selector:
+    app: ecoligo-app
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: LoadBalancer
