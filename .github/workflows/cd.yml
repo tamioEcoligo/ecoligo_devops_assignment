@@ -1,0 +1,123 @@
+# Production deployment pipeline for ecoligo application
+# Deploys to EKS on main branch pushes
+
+name: Production Deployment
+
+on:
+  push:
+    branches: [main]
+  # Also deploy when we create releases
+  release:
+    types: [published]
+
+# Environment variables we'll use throughout
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: ecoligo-prod
+  APP_NAME: ecoligo-app
+  NAMESPACE: ecoligo
+
+jobs:
+  # First job: Build the container and push to ECR
+  build-and-push:
+    name: Build and Push Container
+    runs-on: self-hosted
+    
+    outputs:
+      image_tag: ${{ steps.tag.outputs.short_sha }}
+      image_url: ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Login to Amazon ECR
+      id: ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: Generate image tag
+      id: tag
+      run: |
+        # Use short SHA for readability, fallback to full SHA
+        SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-8)
+        echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+        echo "Using image tag: $SHORT_SHA"
+        
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:${{ steps.tag.outputs.short_sha }} .
+        
+    - name: Push image to ECR
+      run: |
+        docker push ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:${{ steps.tag.outputs.short_sha }}
+        
+    - name: Tag as latest and push
+      run: |
+        docker tag ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:${{ steps.tag.outputs.short_sha }} ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:latest
+        docker push ${{ steps.ecr.outputs.registry }}/${{ env.APP_NAME }}:latest
+
+  # Second job: Deploy to Kubernetes
+  deploy-to-kubernetes:
+    name: Deploy to EKS
+    runs-on: self-hosted
+    needs: build-and-push
+    
+    # This is a production deployment, so we use the production environment
+    environment: production
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig for EKS cluster
+      run: |
+        # Connect to our EKS cluster
+        aws eks update-kubeconfig \
+          --region ${{ env.AWS_REGION }} \
+          --name ${{ env.CLUSTER_NAME }}
+          
+    - name: Create namespace if needed
+      run: |
+        # Make sure our namespace exists
+        kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+        
+    - name: Deploy application
+      run: |
+        # Apply our Kubernetes manifests
+        kubectl apply -f kubernetes/manifests/ -n ${{ env.NAMESPACE }}
+        
+    - name: Wait for deployment to complete
+      run: |
+        # Wait for the deployment to roll out successfully
+        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
+        
+    - name: Verify deployment
+      run: |
+        echo "Deployment status:"
+        kubectl get deployments -n ${{ env.NAMESPACE }}
+        echo ""
+        echo "Pods:"
+        kubectl get pods -n ${{ env.NAMESPACE }} -l app=${{ env.APP_NAME }}
+        
+    - name: Run basic smoke test
+      run: |
+        # Simple check that the application is responding
+        echo "Waiting for application to be ready..."
+        sleep 30
+        # Get the service endpoint and test it
+        kubectl get svc ${{ env.APP_NAME }} -n ${{ env.NAMESPACE }}
+        echo "Deployment completed successfully"
