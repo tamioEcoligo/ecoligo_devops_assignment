@@ -41,6 +41,7 @@ jobs:
         SHORT_SHA=$(git rev-parse --short HEAD)
         TIMESTAMP=$(date +%s)
         # Combine SHA and timestamp to ensure uniqueness
+        # tested
         UNIQUE_TAG="${SHORT_SHA}-${TIMESTAMP}"
         echo "sha=$UNIQUE_TAG" >> $GITHUB_OUTPUT
         echo "Using unique image tag: $UNIQUE_TAG"
