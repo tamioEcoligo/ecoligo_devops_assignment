@@ -35,12 +35,15 @@ jobs:
       run: |
         aws ecr get-login-password --region $ECR_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
         
-    - name: Generate image tag
+    - name: Generate unique image tag
       id: tag
       run: |
         SHORT_SHA=$(git rev-parse --short HEAD)
-        echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
-        echo "Using image tag: $SHORT_SHA"
+        TIMESTAMP=$(date +%s)
+        # Combine SHA and timestamp to ensure uniqueness
+        UNIQUE_TAG="${SHORT_SHA}-${TIMESTAMP}"
+        echo "sha=$UNIQUE_TAG" >> $GITHUB_OUTPUT
+        echo "Using unique image tag: $UNIQUE_TAG"
         
     - name: Build Docker image
       run: |
@@ -49,6 +52,7 @@ jobs:
     - name: Push image to ECR
       run: |
         docker push $ECR_REGISTRY/$ECR_REPO:${{ steps.tag.outputs.sha }}
+        echo "Successfully pushed image: $ECR_REGISTRY/$ECR_REPO:${{ steps.tag.outputs.sha }}"
 
   deploy-with-helm:
     name: Deploy with Helm
@@ -74,6 +78,24 @@ jobs:
       run: |
         kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
         
+    - name: Clean up existing conflicting resources
+      run: |
+        echo "Checking for existing resources that might conflict with Helm..."
+        # Only delete if they exist and don't have Helm labels
+        kubectl get service ecoligo-app -n $NAMESPACE > /dev/null 2>&1 && \
+          kubectl get service ecoligo-app -n $NAMESPACE -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}' | grep -q Helm || \
+          kubectl delete service ecoligo-app -n $NAMESPACE --ignore-not-found=true
+        
+        kubectl get deployment ecoligo-app -n $NAMESPACE > /dev/null 2>&1 && \
+          kubectl get deployment ecoligo-app -n $NAMESPACE -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}' | grep -q Helm || \
+          kubectl delete deployment ecoligo-app -n $NAMESPACE --ignore-not-found=true
+        
+        kubectl get cronjob ecoligo-app-cron -n $NAMESPACE > /dev/null 2>&1 && \
+          kubectl get cronjob ecoligo-app-cron -n $NAMESPACE -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}' | grep -q Helm || \
+          kubectl delete cronjob ecoligo-app-cron -n $NAMESPACE --ignore-not-found=true
+        
+        echo "Cleanup check completed"
+        
     - name: Deploy using Helm
       run: |
         helm upgrade --install ecoligo-app ./kubernetes/helm/ecoligo-app \
@@ -87,6 +109,7 @@ jobs:
       run: |
         echo "Checking deployment status..."
         kubectl rollout status deployment/ecoligo-app -n $NAMESPACE --timeout=300s
+        echo "Deployment successful!"
         
     - name: Check all resources
       run: |
@@ -94,13 +117,18 @@ jobs:
         helm list -n $NAMESPACE
         echo ""
         echo "=== Pods ==="
-        kubectl get pods -n $NAMESPACE
+        kubectl get pods -n $NAMESPACE -l app=ecoligo-app
         echo ""
         echo "=== Services ==="
-        kubectl get svc -n $NAMESPACE
+        kubectl get svc -n $NAMESPACE -l app=ecoligo-app
         echo ""
         echo "=== CronJobs ==="
-        kubectl get cronjobs -n $NAMESPACE
+        kubectl get cronjobs -n $NAMESPACE -l app=ecoligo-app
         echo ""
         echo "=== HPA ==="
-        kubectl get hpa -n $NAMESPACE
+        kubectl get hpa -n $NAMESPACE -l app=ecoligo-app || echo "HPA not found yet"
+        
+    - name: CD completion
+      run: |
+        echo "CD pipeline completed successfully"
+        echo "Application deployed to production"
