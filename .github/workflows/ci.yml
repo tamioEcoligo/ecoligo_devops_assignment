@@ -43,3 +43,8 @@ jobs:
     - name: Validate Helm charts
       run: |
         helm lint kubernetes/helm/ecoligo-app/
+        
+    - name: CI completion
+      run: |
+        echo "CI pipeline completed successfully"
+        echo "Code is ready for merge to main"
