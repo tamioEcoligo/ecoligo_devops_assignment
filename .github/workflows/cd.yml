@@ -7,6 +7,7 @@ on:
 env:
   CLUSTER_NAME: corporate-secondary
   AWS_REGION: us-east-1
+  ECR_REGION: ap-south-1
   ECR_REGISTRY: 398803372580.dkr.ecr.ap-south-1.amazonaws.com
   ECR_REPO: ecoligovenkat
   NAMESPACE: ecoligo-production
@@ -23,16 +24,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Configure AWS credentials
+    - name: Configure AWS credentials for ECR
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: ${{ env.ECR_REGION }}
         
     - name: Login to ECR
       run: |
-        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+        aws ecr get-login-password --region $ECR_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
         
     - name: Generate image tag
       id: tag
