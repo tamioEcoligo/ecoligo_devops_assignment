@@ -1,0 +1,45 @@
+name: CI Pipeline - Test and Validate
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  code-validation:
+    name: Validate Code and Run Tests
+    runs-on: self-hosted
+    
+    steps:
+    - name: Checkout source code
+      uses: actions/checkout@v4
+      
+    - name: Setup Python environment
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+        
+    - name: Install project dependencies
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Run unit tests
+      run: |
+        make unittest
+        
+    - name: Validate application structure
+      run: |
+        python -c "import app; print('Application imports work')"
+        python -c "from app.main import app; print('FastAPI app loads')"
+        python -c "from app.api import api; print('API module works')"
+        
+    - name: Build Docker image for testing
+      run: |
+        docker build -t ecoligo-app-test .
+        
+    - name: Test cronjob script
+      run: |
+        cd scripts && python hourly_cronjob.py
+        
+    - name: Validate Helm charts
+      run: |
+        helm lint kubernetes/helm/ecoligo-app/
