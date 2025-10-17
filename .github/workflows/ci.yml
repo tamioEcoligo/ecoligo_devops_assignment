@@ -1,5 +1,6 @@
 # CI pipeline for ecoligo application
 # Runs when someone creates a pull request to check code quality
+#
 
 name: CI - Code Validation
 
