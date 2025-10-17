@@ -5,8 +5,8 @@ on:
     branches: [main]
 
 env:
-  CLUSTER_NAME: devopsshack-cluster
-  AWS_REGION: ap-south-1
+  CLUSTER_NAME: corporate-secondary
+  AWS_REGION: us-east-1
   ECR_REGISTRY: 398803372580.dkr.ecr.ap-south-1.amazonaws.com
   ECR_REPO: ecoligovenkat
   NAMESPACE: ecoligo-production
