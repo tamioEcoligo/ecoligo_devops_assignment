@@ -1,0 +1,36 @@
+replicaCount: 2
+
+image:
+  repository: 398803372580.dkr.ecr.ap-south-1.amazonaws.com/ecoligovenkat
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: false
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPU: 80
+  targetMemory: 80
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+    cpu: "200m"
+
+cronjob:
+  enabled: true
+  schedule: "0 * * * *"
+
+config:
+  logLevel: "INFO"
