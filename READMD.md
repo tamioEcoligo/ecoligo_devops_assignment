@@ -1,4 +1,4 @@
-# 🧩 DevOps Assignment – Full Implementation Guide
+<img width="1280" height="645" alt="image" src="https://github.com/user-attachments/assets/fbeaceec-8f4e-4d13-a501-e986d252dd5b" /># 🧩 DevOps Assignment – Full Implementation Guide
 
 ## 1. Infrastructure Setup (Terraform)
 This setup provisions complete AWS EKS infrastructure using Terraform.
@@ -281,6 +281,9 @@ kubectl get ingress -n ecoligo-production
 Access via:
 ```
 https://ecoligo.mvenkat.in
+
+<img width="1280" height="645" alt="image" src="https://github.com/user-attachments/assets/bf3f458c-7287-4cbb-8cbf-17032ecf4999" />
+
 ```
 
 ---
