@@ -7,7 +7,7 @@ on:
 env:
   ECR_REGISTRY: 398803372580.dkr.ecr.ap-south-1.amazonaws.com
   ECR_REPOSITORY: ecoligovenkat
-  EKS_CLUSTER: ecoligo-cluster
+  EKS_CLUSTER: ecoligo-production
   K8S_NAMESPACE: ecoligo-production
   HELM_CHART: kubernetes/helm/ecoligo-app
 
@@ -118,7 +118,7 @@ jobs:
 
     - name: Configure EKS access
       run: |
-        aws eks update-kubeconfig --region us-east-1 --name $EKS_CLUSTER
+        aws eks update-kubeconfig --region ap-south-1 --name $EKS_CLUSTER
 
     - name: Rollback deployment
       run: |
