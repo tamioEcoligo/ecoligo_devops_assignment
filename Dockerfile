@@ -13,12 +13,11 @@ COPY ./requirements.txt /src/requirements.txt
 
 # install dependencies
 RUN set -eux \
-    && apk add --no-cache --virtual .build-deps build-base \
-    libressl-dev libffi-dev gcc musl-dev python3-dev \
-    postgresql-dev \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends curl \
     && pip install uv \
-    && pip install --upgrade pip setuptools wheel \
-    && pip install -r /src/requirements.txt \
+    && uv pip install --system -r /src/requirements.txt \
+    && rm -rf /var/lib/apt/lists/* \
     && rm -rf /root/.cache/pip
 
 # copy project
