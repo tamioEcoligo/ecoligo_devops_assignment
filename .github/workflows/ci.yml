@@ -1,0 +1,41 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  test-and-build:
+    name: Test and Build
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run unit tests
+      run: |
+        make unittest
+
+    - name: Generate image tag
+      id: tag
+      run: |
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+    - name: Build Docker image
+      run: |
+        docker build -t ecoligo-app:ci-${{ steps.tag.outputs.short_sha }} .
+
+    - name: Test Docker image
+      run: |
+        docker run --rm ecoligo-app:ci-${{ steps.tag.outputs.short_sha }} python -c "from app.main import app; print('App starts successfully')"

@@ -1,0 +1,130 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches: [main, dev]
+
+env:
+  ECR_REGISTRY: 398803372580.dkr.ecr.ap-south-1.amazonaws.com
+  ECR_REPOSITORY: ecoligovenkat
+  EKS_CLUSTER: ecoligo-cluster
+  K8S_NAMESPACE: ecoligo-production
+  HELM_CHART: kubernetes/helm/ecoligo-app
+
+jobs:
+  build-and-push:
+    name: Build and Push to ECR
+    runs-on: self-hosted
+
+    outputs:
+      image_tag: ${{ steps.tag.outputs.short_sha }}
+      chart_version: ${{ steps.tag.outputs.short_sha }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ap-south-1
+
+    - name: Login to ECR
+      run: |
+        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+
+    - name: Generate image tag
+      id: tag
+      run: |
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+    - name: Update Helm chart version
+      run: |
+        # Update Chart.yaml with git SHA
+        sed -i "s/version: .*/version: 1.0.${{ steps.tag.outputs.short_sha }}/" $HELM_CHART/Chart.yaml
+
+    - name: Build Docker image
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.tag.outputs.short_sha }} .
+
+    - name: Push to ECR
+      run: |
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.tag.outputs.short_sha }}
+        echo "Successfully pushed image with tag: ${{ steps.tag.outputs.short_sha }}"
+
+  deploy-to-eks:
+    name: Deploy to EKS
+    runs-on: self-hosted
+    needs: build-and-push
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Configure EKS access
+      run: |
+        aws eks update-kubeconfig --region ap-south-1 --name $EKS_CLUSTER
+
+    - name: Create namespace if not exists
+      run: |
+        kubectl create namespace $K8S_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Deploy with Helm
+      id: deploy
+      run: |
+        helm upgrade --install ecoligo-app $HELM_CHART \
+          --namespace $K8S_NAMESPACE \
+          --set image.repository=$ECR_REGISTRY/$ECR_REPOSITORY \
+          --set image.tag=${{ needs.build-and-push.outputs.image_tag }} \
+          --set image.pullPolicy=Always \
+          --set replicaCount=2 \
+          --wait --timeout 300s
+
+    - name: Verify deployment
+      run: |
+        kubectl rollout status deployment/ecoligo-app -n $K8S_NAMESPACE --timeout=300s
+        echo "Deployment successful! Git SHA: ${{ needs.build-and-push.outputs.image_tag }}"
+
+    - name: Check resources
+      run: |
+        kubectl get pods,svc,hpa -n $K8S_NAMESPACE
+
+  rollback-on-failure:
+    name: Rollback on Failure
+    runs-on: self-hosted
+    needs: deploy-to-eks
+    if: failure()
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Configure EKS access
+      run: |
+        aws eks update-kubeconfig --region us-east-1 --name $EKS_CLUSTER
+
+    - name: Rollback deployment
+      run: |
+        helm rollback ecoligo-app -n $K8S_NAMESPACE --wait --timeout 300s
+        echo "Rollback completed successfully for build: ${{ needs.build-and-push.outputs.image_tag }}"
+
+    - name: Send failure notification
+      run: |
+        echo "Deployment failed and was rolled back. Please check the logs."

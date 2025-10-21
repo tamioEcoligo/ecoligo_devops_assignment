@@ -16,9 +16,11 @@ RUN set -eux \
     && apk add --no-cache --virtual .build-deps build-base \
     libressl-dev libffi-dev gcc musl-dev python3-dev \
     postgresql-dev \
+    && pip install uv \
     && pip install --upgrade pip setuptools wheel \
     && pip install -r /src/requirements.txt \
     && rm -rf /root/.cache/pip
 
 # copy project
 COPY . /src/
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
