@@ -282,7 +282,9 @@ Access via:
 ```
 https://ecoligo.mvenkat.in
 
-<img width="1280" height="645" alt="image" src="https://github.com/user-attachments/assets/fbeaceec-8f4e-4d13-a501-e986d252dd5b" />
+Example Swagger UI:
+
+![FastAPI Swagger UI](6f85051d-2611-4f6d-ba71-fba44d9f41b2.png)
 
 ```
 
