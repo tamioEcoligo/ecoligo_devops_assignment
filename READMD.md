@@ -201,6 +201,24 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main
 ```
 
 ### Ingress Configuration
+kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.7.1/cert-manager.yaml
+cluster-issuer.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: your-email@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+kubectl apply -f cluster-issuer.yaml
+
 `ingress-ecoligo.yaml`
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -282,7 +300,7 @@ Access via:
 ```
 https://ecoligo.mvenkat.in
 
-<img width="1280" height="645" alt="image" src="https://github.com/user-attachments/assets/643004a9-d33c-4fcf-b768-ca94b9984391" />
+
 
 
 ```
