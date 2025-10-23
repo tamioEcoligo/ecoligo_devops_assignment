@@ -1,5 +1,5 @@
 # pull official base image
-FROM python:3.8.1-alpine
+FROM python:3.13-slim
 
 # set work directory
 WORKDIR /src
@@ -13,12 +13,13 @@ COPY ./requirements.txt /src/requirements.txt
 
 # install dependencies
 RUN set -eux \
-    && apk add --no-cache --virtual .build-deps build-base \
-    libressl-dev libffi-dev gcc musl-dev python3-dev \
-    postgresql-dev \
-    && pip install --upgrade pip setuptools wheel \
-    && pip install -r /src/requirements.txt \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && pip install uv \
+    && uv pip install --system -r /src/requirements.txt \
+    && rm -rf /var/lib/apt/lists/* \
     && rm -rf /root/.cache/pip
 
 # copy project
 COPY . /src/
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

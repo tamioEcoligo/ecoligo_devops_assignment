@@ -1,5 +1,4 @@
-#  On Live https://ecoligo.mvenkat.in/docs
-
+# 🧩 DevOps Assignment – Full Implementation Guide
 
 ## 1. Infrastructure Setup (Terraform)
 This setup provisions complete AWS EKS infrastructure using Terraform.
@@ -321,3 +320,4 @@ terraform destroy
 - Scaling: Verified via HPA + Autoscaler  
 - Monitoring: Metrics server enabled  
 - CI/CD: Fully automated GitHub Actions pipeline
+

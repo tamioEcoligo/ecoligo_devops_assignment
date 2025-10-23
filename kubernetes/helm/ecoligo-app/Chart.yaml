@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ecoligo-app
+description: FastAPI application for ecoligo
+type: application
+version: 1.0.0
+appVersion: "1.0"
